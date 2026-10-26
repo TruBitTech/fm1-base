@@ -1,0 +1,13 @@
+# Pin Head build settings
+name = "PINHEAD"
+id_prefix = "FM-1_PH"
+usb_manufacturer = "TruBitTech"
+usb_product = "Pin Head FM-1"
+o2 = []
+words = "words.tsv"
+ble = false
+ble_central = false
+tagline = "Synthi AKS-inspired pin matrix firmware"
+repo = "https://github.com/TruBitTech/fm1-base"
+licence = "MPL-2.0"
+credits = "Built on fm1-base and felucca-bsp"
