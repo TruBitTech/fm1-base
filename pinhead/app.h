@@ -9,6 +9,10 @@
 #define APP_SPLASH_RGB RGB(20, 20, 20)
 #define APP_BLOCK 256u
 
+/* the store: settings + panel calibration */
+enum { OBJ_SETTINGS, OBJ_PANEL, OBJ_NOBJ };
+#define APP_STORE_MAP {0xFC000u, 0xDC000u}
+
 void app_init(void);
 void app_render(int32_t *lr, uint32_t n, uint32_t master_q12);
 void app_panic(void);

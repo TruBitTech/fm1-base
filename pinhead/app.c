@@ -1,11 +1,11 @@
 /* SPDX-License-Identifier: MPL-2.0
- * Pin Head application — matrix-centric UI on fm1-base
+ * Pin Head application — complete matrix synth on fm1-base
  */
 #include "app.h"
-#include "matrix.h"
-#include "joystick.h"
-#include "engine.h"
-#include "presets.h"
+#include "matrix.c"
+#include "joystick.c"
+#include "engine.c"
+#include "presets.c"
 
 /* ------------------------------------------------------------------ state --- */
 enum { MODE_MATRIX, MODE_PLAY, MODE_GLO };
@@ -15,7 +15,8 @@ static JoystickState joystick;
 static Engine engine;
 static uint8_t glo_page = 0;
 static uint8_t preset_idx = 0;
-static volatile int32_t voice_note = -1;
+static int8_t octave = 0;
+static uint32_t keys_held;
 
 /* ------------------------------------------------------------------ audio --- */
 void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
@@ -23,7 +24,7 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
     float L[256], R[256];
     if (n > 256) n = 256;
     engine_process(&engine, L, R, (int)n);
-    float g = (float)master_q12 / 4096.0f * 4000000.0f;
+    float g = (float)master_q12 / 4096.0f * 3500000.0f;
     for (uint32_t i = 0; i < n; i++) {
         lr[2 * i]     = (int32_t)(L[i] * g);
         lr[2 * i + 1] = (int32_t)(R[i] * g);
@@ -32,7 +33,6 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
 
 void app_panic(void)
 {
-    voice_note = -1;
     engine_set_gate(&engine, false);
 }
 
@@ -41,9 +41,9 @@ void app_init(void)
     matrix_init(&matrix);
     joystick_init(&joystick);
     engine_init(&engine, &matrix, &joystick);
-    preset_load(&matrix, 0); /* On the Run */
+    preset_load(&matrix, 0);
     engine_set_note(&engine, 220.0f);
-    engine_set_gate(&engine, true);
+    engine_set_gate(&engine, false);
 }
 
 /* ------------------------------------------------------------------ UI --- */
@@ -83,7 +83,7 @@ static void draw_matrix(void)
     }
 
     cv_text(4, 200, &FONT_XS, matrix.full_page ? "FULL" : "CORE", C_GRAY);
-    cv_text(60, 200, &FONT_XS, factory_presets[preset_idx].name, C_HI);
+    cv_text(50, 200, &FONT_XS, factory_presets[preset_idx].name, C_HI);
     cv_blit(0, 0);
 }
 
@@ -92,14 +92,57 @@ static void draw_glo(void)
     static const char *PAGES[] = {"LUSH REVERB", "PING-PONG", "TAPE DELAY", "JOYSTICK"};
     cv_begin(240, 200, C_BLACK);
     cv_text(10, 20, &FONT_B, PAGES[glo_page], C_WHITE);
-    cv_text(10, 50, &FONT_XS, "K1 / K2 adjust", C_GRAY);
+    char buf[32];
+    if (glo_page == 0) {
+        cv_text(10, 60, &FONT_XS, "K1 Mix", C_GRAY);
+        cv_text(10, 80, &FONT_XS, "K2 Decay", C_GRAY);
+    } else if (glo_page == 1) {
+        cv_text(10, 60, &FONT_XS, "K1 Mix", C_GRAY);
+        cv_text(10, 80, &FONT_XS, "K2 Time", C_GRAY);
+        cv_text(10, 100, &FONT_XS, "K3 Fb", C_GRAY);
+    } else if (glo_page == 2) {
+        cv_text(10, 60, &FONT_XS, "K1 Time", C_GRAY);
+        cv_text(10, 80, &FONT_XS, "K2 Fb", C_GRAY);
+    } else {
+        cv_text(10, 60, &FONT_XS, "K1 Range X", C_GRAY);
+        cv_text(10, 80, &FONT_XS, "K2 Range Y", C_GRAY);
+    }
     cv_blit(0, 0);
+}
+
+static void draw_play(void)
+{
+    cv_begin(240, 200, C_BLACK);
+    cv_text(10, 20, &FONT_B, "PLAY", C_WHITE);
+    cv_text(10, 50, &FONT_XS, "K1 = Joystick X", C_GRAY);
+    cv_text(10, 70, &FONT_XS, "K2 = Joystick Y", C_GRAY);
+    cv_text(10, 100, &FONT_XS, "Keys play notes", C_HI);
+    cv_blit(0, 0);
+}
+
+static void note_on_key(int key)
+{
+    int note = 60 + key + octave * 12;   /* C4 base */
+    float freq = 440.0f * powf(2.0f, (note - 69) / 12.0f);
+    engine_set_note(&engine, freq);
+    engine_set_gate(&engine, true);
 }
 
 static void input(void)
 {
     uint32_t btn = plat_buttons();
+    uint32_t keys = plat_keys();
     int32_t e;
+
+    /* key edges → notes */
+    for (int k = 0; k < 27; k++) {
+        uint32_t bit = 1u << k;
+        if ((keys & bit) && !(keys_held & bit))
+            note_on_key(k);
+        else if (!(keys & bit) && (keys_held & bit))
+            engine_set_gate(&engine, false);
+    }
+    keys_held = keys;
 
     if ((e = plat_enc(EN_SELECT))) {
         if (mode == MODE_MATRIX)
@@ -120,6 +163,21 @@ static void input(void)
         if ((e = plat_enc(EN_K1))) rx = e * 0.05f;
         if ((e = plat_enc(EN_K2))) ry = e * 0.05f;
         joystick_set_from_knobs(&joystick, rx, ry);
+    } else if (mode == MODE_GLO) {
+        if ((e = plat_enc(EN_K1))) {
+            if (glo_page == 0) engine.reverb_mix = fmaxf(0.0f, fminf(1.0f, engine.reverb_mix + e * 0.05f));
+            else if (glo_page == 1) engine.delay_mix = fmaxf(0.0f, fminf(1.0f, engine.delay_mix + e * 0.05f));
+            else if (glo_page == 2) engine.tape.time = fmaxf(0.05f, fminf(1.0f, engine.tape.time + e * 0.02f));
+            else joystick.range_x = fmaxf(0.2f, fminf(2.0f, joystick.range_x + e * 0.05f));
+        }
+        if ((e = plat_enc(EN_K2))) {
+            if (glo_page == 0) engine.reverb_decay = fmaxf(0.1f, fminf(0.95f, engine.reverb_decay + e * 0.03f));
+            else if (glo_page == 1) engine.delay_time = fmaxf(0.05f, fminf(1.0f, engine.delay_time + e * 0.02f));
+            else if (glo_page == 2) engine.tape.feedback = fmaxf(0.0f, fminf(0.9f, engine.tape.feedback + e * 0.03f));
+            else joystick.range_y = fmaxf(0.2f, fminf(2.0f, joystick.range_y + e * 0.05f));
+        }
+        if ((e = plat_enc(EN_K3)) && glo_page == 1)
+            engine.delay_fb = fmaxf(0.0f, fminf(0.9f, engine.delay_fb + e * 0.03f));
     }
 
     static uint32_t last_btn;
@@ -131,6 +189,10 @@ static void input(void)
         preset_idx = (preset_idx + 1) % PRESET_COUNT;
         preset_load(&matrix, preset_idx);
     }
+    if ((btn & (1u << B_OCTUP)) && !(last_btn & (1u << B_OCTUP)))
+        octave = (int8_t)(octave < 2 ? octave + 1 : 2);
+    if ((btn & (1u << B_OCTDN)) && !(last_btn & (1u << B_OCTDN)))
+        octave = (int8_t)(octave > -2 ? octave - 1 : -2);
     last_btn = btn;
 }
 
@@ -149,7 +211,7 @@ void app_frame(void)
     else if (mode == MODE_GLO)
         draw_glo();
     else if (mode == MODE_PLAY)
-        cv_text(10, 100, &FONT_B, "PLAY", C_WHITE);
+        draw_play();
 }
 
 void app_say(const char *a, const char *b) { (void)a; (void)b; }
