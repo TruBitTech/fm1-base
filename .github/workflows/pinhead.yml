@@ -1,0 +1,44 @@
+name: Build Pin Head
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'pinhead/**'
+      - '.github/workflows/pinhead.yml'
+  pull_request:
+    paths:
+      - 'pinhead/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl xz-utils python3
+
+      - name: Get JieLi toolchain
+        run: |
+          tools/get_toolchain.sh "$HOME/.jieli"
+          echo "JIELI_TOOLCHAIN=$HOME/.jieli/toolchain" >> $GITHUB_ENV
+
+      - name: Build Pin Head firmware
+        run: |
+          tools/build.py pinhead
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pinhead-fwsc
+          path: |
+            pinhead/build/*.fwsc
+            pinhead/build/*.bin
+          retention-days: 30
