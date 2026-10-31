@@ -14,9 +14,13 @@ static MatrixState matrix;
 static JoystickState joystick;
 static Engine engine;
 static uint8_t glo_page = 0;
-static uint8_t preset_idx = 0;
+static uint8_t preset_idx = 1;          /* start at position 2 (0-based) */
 static int8_t octave = 0;
 static uint32_t keys_held;
+
+/* display options */
+static uint8_t header_style = 0;        /* 0 = A/1, 1 = labeled */
+static uint8_t grid_style = 0;          /* 0 = solid, 1 = lines, 2 = checkerboard */
 
 /* ------------------------------------------------------------------ audio --- */
 void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
@@ -41,7 +45,7 @@ void app_init(void)
     matrix_init(&matrix);
     joystick_init(&joystick);
     engine_init(&engine, &matrix, &joystick);
-    preset_load(&matrix, 0);
+    preset_load(&matrix, PRESET_COUNT - 1); /* Empty Matrix — blank slate */
     engine_set_note(&engine, 220.0f);
     engine_set_gate(&engine, false);
 }
@@ -50,29 +54,56 @@ void app_init(void)
 static const char *COL_HEAD[] = {"A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P"};
 static const char *ROW_HEAD[] = {"1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16"};
 
+/* short labels for the optional labeled headers */
+static const char *COL_LABEL[] = {"Osc1","Osc2","Osc3","Filt","Env","Nse","RMod","Out","Spr","Tape","JoyX","JoyY","Lush","PP","TIn","TOut"};
+static const char *ROW_LABEL[] = {"Osc1","Osc2","Osc3","Filt","Env","Nse","RMod","Out","Spr","Tape","JoyX","JoyY","Lush","PP","TIn","TOut"};
+
 static void draw_matrix(void)
 {
     int size = matrix.full_page ? 16 : 10;
     int cell = matrix.full_page ? 12 : 18;
-    int ox = 28, oy = 22;
+    int ox = 36, oy = 28;
 
     cv_begin(240, 210, C_BLACK);
 
+    /* headers */
     for (int c = 0; c < size; c++) {
         int px = ox + c * cell;
-        cv_text(px - 3, 4, &FONT_XS, COL_HEAD[c], C_GRAY);
+        if (header_style == 0)
+            cv_text(px - 3, 4, &FONT_XS, COL_HEAD[c], C_GRAY);
+        else
+            cv_text(px - 8, 2, &FONT_XS, COL_LABEL[c], C_DIM);
     }
     for (int r = 0; r < size; r++) {
         int py = oy + r * cell;
-        cv_text(4, py - 4, &FONT_XS, ROW_HEAD[r], C_GRAY);
+        if (header_style == 0)
+            cv_text(4, py - 4, &FONT_XS, ROW_HEAD[r], C_GRAY);
+        else
+            cv_text(2, py - 6, &FONT_XS, ROW_LABEL[r], C_DIM);
     }
 
+    /* grid background styles */
+    if (grid_style == 1) { /* lines separating pin sets */
+        for (int i = 0; i <= size; i++) {
+            int x = ox - 2 + i * cell;
+            int y = oy - 2 + i * cell;
+            cv_rect(x, oy - 2, 1, size * cell, C_LINE);
+            cv_rect(ox - 2, y, size * cell, 1, C_LINE);
+        }
+    } else if (grid_style == 2) { /* checkerboard */
+        for (int r = 0; r < size; r++)
+            for (int c = 0; c < size; c++)
+                if ((r + c) & 1)
+                    cv_rect(ox + c * cell - 6, oy + r * cell - 6, cell - 2, cell - 2, C_LINE);
+    }
+
+    /* pins */
     for (int r = 0; r < size; r++) {
         for (int c = 0; c < size; c++) {
             int px = ox + c * cell;
             int py = oy + r * cell;
             PinType p = matrix.pins[r][c];
-            uint16_t col = C_DIM;
+            uint16_t col = (grid_style == 0) ? C_DIM : C_BLACK;
             if (p == PIN_WHITE) col = C_WHITE;
             else if (p == PIN_RED) col = C_RED;
             else if (p == PIN_GREEN) col = C_GREEN;
@@ -89,10 +120,9 @@ static void draw_matrix(void)
 
 static void draw_glo(void)
 {
-    static const char *PAGES[] = {"LUSH REVERB", "PING-PONG", "TAPE DELAY", "JOYSTICK"};
+    static const char *PAGES[] = {"LUSH REVERB", "PING-PONG", "TAPE DELAY", "JOYSTICK", "DISPLAY"};
     cv_begin(240, 200, C_BLACK);
     cv_text(10, 20, &FONT_B, PAGES[glo_page], C_WHITE);
-    char buf[32];
     if (glo_page == 0) {
         cv_text(10, 60, &FONT_XS, "K1 Mix", C_GRAY);
         cv_text(10, 80, &FONT_XS, "K2 Decay", C_GRAY);
@@ -103,9 +133,15 @@ static void draw_glo(void)
     } else if (glo_page == 2) {
         cv_text(10, 60, &FONT_XS, "K1 Time", C_GRAY);
         cv_text(10, 80, &FONT_XS, "K2 Fb", C_GRAY);
-    } else {
+    } else if (glo_page == 3) {
         cv_text(10, 60, &FONT_XS, "K1 Range X", C_GRAY);
         cv_text(10, 80, &FONT_XS, "K2 Range Y", C_GRAY);
+    } else {
+        cv_text(10, 60, &FONT_XS, "K1 Headers", C_GRAY);
+        cv_text(10, 80, &FONT_XS, header_style ? "Labeled" : "A/1", C_HI);
+        cv_text(10, 110, &FONT_XS, "K2 Grid", C_GRAY);
+        const char *g = grid_style == 0 ? "Solid" : grid_style == 1 ? "Lines" : "Checker";
+        cv_text(10, 130, &FONT_XS, g, C_HI);
     }
     cv_blit(0, 0);
 }
@@ -122,7 +158,7 @@ static void draw_play(void)
 
 static void note_on_key(int key)
 {
-    int note = 60 + key + octave * 12;   /* C4 base */
+    int note = 60 + key + octave * 12;
     float freq = 440.0f * powf(2.0f, (note - 69) / 12.0f);
     engine_set_note(&engine, freq);
     engine_set_gate(&engine, true);
@@ -134,7 +170,6 @@ static void input(void)
     uint32_t keys = plat_keys();
     int32_t e;
 
-    /* key edges → notes */
     for (int k = 0; k < 27; k++) {
         uint32_t bit = 1u << k;
         if ((keys & bit) && !(keys_held & bit))
@@ -148,7 +183,7 @@ static void input(void)
         if (mode == MODE_MATRIX)
             matrix_set_view(&matrix, !matrix.full_page);
         else if (mode == MODE_GLO)
-            glo_page = (uint8_t)((glo_page + e) & 3);
+            glo_page = (uint8_t)((glo_page + e) % 5);
     }
 
     if (mode == MODE_MATRIX) {
@@ -164,20 +199,27 @@ static void input(void)
         if ((e = plat_enc(EN_K2))) ry = e * 0.05f;
         joystick_set_from_knobs(&joystick, rx, ry);
     } else if (mode == MODE_GLO) {
-        if ((e = plat_enc(EN_K1))) {
-            if (glo_page == 0) engine.reverb_mix = fmaxf(0.0f, fminf(1.0f, engine.reverb_mix + e * 0.05f));
-            else if (glo_page == 1) engine.delay_mix = fmaxf(0.0f, fminf(1.0f, engine.delay_mix + e * 0.05f));
-            else if (glo_page == 2) engine.tape.time = fmaxf(0.05f, fminf(1.0f, engine.tape.time + e * 0.02f));
-            else joystick.range_x = fmaxf(0.2f, fminf(2.0f, joystick.range_x + e * 0.05f));
+        if (glo_page == 4) {
+            if ((e = plat_enc(EN_K1)))
+                header_style = (header_style + e) & 1;
+            if ((e = plat_enc(EN_K2)))
+                grid_style = (uint8_t)((grid_style + e + 3) % 3);
+        } else {
+            if ((e = plat_enc(EN_K1))) {
+                if (glo_page == 0) engine.reverb_mix = fmaxf(0.0f, fminf(1.0f, engine.reverb_mix + e * 0.05f));
+                else if (glo_page == 1) engine.delay_mix = fmaxf(0.0f, fminf(1.0f, engine.delay_mix + e * 0.05f));
+                else if (glo_page == 2) engine.tape.time = fmaxf(0.05f, fminf(1.0f, engine.tape.time + e * 0.02f));
+                else joystick.range_x = fmaxf(0.2f, fminf(2.0f, joystick.range_x + e * 0.05f));
+            }
+            if ((e = plat_enc(EN_K2))) {
+                if (glo_page == 0) engine.reverb_decay = fmaxf(0.1f, fminf(0.95f, engine.reverb_decay + e * 0.03f));
+                else if (glo_page == 1) engine.delay_time = fmaxf(0.05f, fminf(1.0f, engine.delay_time + e * 0.02f));
+                else if (glo_page == 2) engine.tape.feedback = fmaxf(0.0f, fminf(0.9f, engine.tape.feedback + e * 0.03f));
+                else joystick.range_y = fmaxf(0.2f, fminf(2.0f, joystick.range_y + e * 0.05f));
+            }
+            if ((e = plat_enc(EN_K3)) && glo_page == 1)
+                engine.delay_fb = fmaxf(0.0f, fminf(0.9f, engine.delay_fb + e * 0.03f));
         }
-        if ((e = plat_enc(EN_K2))) {
-            if (glo_page == 0) engine.reverb_decay = fmaxf(0.1f, fminf(0.95f, engine.reverb_decay + e * 0.03f));
-            else if (glo_page == 1) engine.delay_time = fmaxf(0.05f, fminf(1.0f, engine.delay_time + e * 0.02f));
-            else if (glo_page == 2) engine.tape.feedback = fmaxf(0.0f, fminf(0.9f, engine.tape.feedback + e * 0.03f));
-            else joystick.range_y = fmaxf(0.2f, fminf(2.0f, joystick.range_y + e * 0.05f));
-        }
-        if ((e = plat_enc(EN_K3)) && glo_page == 1)
-            engine.delay_fb = fmaxf(0.0f, fminf(0.9f, engine.delay_fb + e * 0.03f));
     }
 
     static uint32_t last_btn;
