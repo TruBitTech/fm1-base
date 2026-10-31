@@ -1,0 +1,169 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+#include "engine.h"
+#include "presets.h"
+#include <math.h>
+#include <string.h>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846f
+#endif
+
+static float frand(float *seed)
+{
+    *seed = sinf(*seed * 12.9898f) * 43758.5453f;
+    return (*seed - floorf(*seed)) * 2.0f - 1.0f;
+}
+
+static float osc_tick(Osc *o, float sr)
+{
+    o->phase += o->freq / sr;
+    if (o->phase >= 1.0f) o->phase -= 1.0f;
+    float s = (o->phase < o->pw) ? 1.0f : -1.0f;
+    return s * o->level;
+}
+
+static void filter_tick(Filter *f, float in, float sr)
+{
+    float f0 = f->cutoff / sr;
+    if (f0 > 0.45f) f0 = 0.45f;
+    float q = 1.0f - f->res * 0.9f;
+    f->lp += f0 * (in - f->lp - f->bp * q);
+    f->bp += f0 * f->lp;
+    f->hp = in - f->lp - f->bp;
+}
+
+static float env_tick(Trapezoid *e, float sr)
+{
+    float rate = e->gate ? e->attack : e->release;
+    if (rate < 0.001f) rate = 0.001f;
+    float step = 1.0f / (rate * sr);
+    if (e->gate) {
+        e->stage += step;
+        if (e->stage > 1.0f) e->stage = 1.0f;
+    } else {
+        e->stage -= step;
+        if (e->stage < 0.0f) e->stage = 0.0f;
+    }
+    return e->stage;
+}
+
+static float spring_tick(Spring *s, float in)
+{
+    float fb = s->buf[s->pos];
+    s->buf[s->pos] = in * 0.4f + fb * s->decay;
+    s->pos = (s->pos + 1) % 2048;
+    return in * (1.0f - s->mix) + fb * s->mix;
+}
+
+static float tape_tick(Tape *t, float in, float sr)
+{
+    int delay = (int)(t->time * sr);
+    if (delay < 1) delay = 1;
+    if (delay > 4095) delay = 4095;
+    int rpos = (t->pos + 4096 - delay) & 4095;
+    float fb = t->buf[rpos];
+    t->buf[t->pos] = in + fb * t->feedback;
+    t->pos = (t->pos + 1) & 4095;
+    return in * (1.0f - t->mix) + fb * t->mix;
+}
+
+void engine_init(Engine *e, MatrixState *m, JoystickState *j)
+{
+    memset(e, 0, sizeof(*e));
+    e->matrix = m;
+    e->joystick = j;
+
+    e->osc1.freq = 110.0f; e->osc1.pw = 0.5f; e->osc1.level = 0.6f;
+    e->osc2.freq = 220.0f; e->osc2.pw = 0.5f; e->osc2.level = 0.4f;
+    e->osc3.freq = 55.0f;  e->osc3.pw = 0.5f; e->osc3.level = 0.3f;
+
+    e->filter.cutoff = 2000.0f;
+    e->filter.res = 0.4f;
+
+    e->env.attack = 0.01f;
+    e->env.decay = 0.2f;
+    e->env.sustain = 0.6f;
+    e->env.release = 0.3f;
+
+    e->spring.mix = 0.3f;
+    e->spring.decay = 0.7f;
+
+    e->tape.time = 0.25f;
+    e->tape.feedback = 0.4f;
+    e->tape.mix = 0.2f;
+
+    e->reverb_mix = 0.2f;
+    e->reverb_decay = 0.6f;
+    e->delay_mix = 0.15f;
+    e->delay_time = 0.3f;
+    e->delay_fb = 0.35f;
+
+    e->noise_seed = 0.123f;
+}
+
+void engine_set_gate(Engine *e, bool on) { e->env.gate = on; }
+
+void engine_set_note(Engine *e, float freq)
+{
+    e->osc1.freq = freq;
+    e->osc2.freq = freq * 1.5f;
+    e->osc3.freq = freq * 0.5f;
+}
+
+void engine_load_preset(Engine *e, int index)
+{
+    if (e->matrix) preset_load(e->matrix, index);
+}
+
+static void evaluate_matrix(Engine *e, float *dest)
+{
+    const MatrixState *m = e->matrix;
+    if (!m) return;
+
+    float sources[16] = {0};
+    sources[0] = osc_tick(&e->osc1, PH_SAMPLE_RATE);
+    sources[1] = osc_tick(&e->osc2, PH_SAMPLE_RATE);
+    sources[2] = osc_tick(&e->osc3, PH_SAMPLE_RATE);
+    sources[5] = frand(&e->noise_seed) * 0.3f;
+    sources[8] = env_tick(&e->env, PH_SAMPLE_RATE);
+
+    e->ring_a = sources[0] * 0.5f + sources[1] * 0.5f;
+    e->ring_b = sources[5];
+    sources[9] = e->ring_a * e->ring_b;
+
+    memset(dest, 0, 16 * sizeof(float));
+
+    for (int r = 0; r < 16; r++) {
+        for (int c = 0; c < 16; c++) {
+            PinType pt = matrix_get(m, r, c);
+            if (pt == PIN_NONE) continue;
+            float g = pin_gain(pt);
+            dest[c] += sources[r] * g;
+        }
+    }
+
+    float fin = dest[3];
+    filter_tick(&e->filter, fin, PH_SAMPLE_RATE);
+    dest[3] = e->filter.lp;
+}
+
+void engine_process(Engine *e, float *out_l, float *out_r, int n)
+{
+    for (int i = 0; i < n; i++) {
+        float dest[16];
+        evaluate_matrix(e, dest);
+
+        float dry = dest[9];
+        float wet = spring_tick(&e->spring, dry);
+        float tape = tape_tick(&e->tape, wet, PH_SAMPLE_RATE);
+
+        float mix = dry * 0.7f + tape * 0.3f;
+        if (e->reverb_mix > 0.01f)
+            mix = mix * (1.0f - e->reverb_mix) + wet * e->reverb_mix;
+
+        float jx = e->joystick ? joystick_mod_x(e->joystick) : 0.0f;
+
+        *out_l++ = mix * (1.0f + jx * 0.2f);
+        *out_r++ = mix * (1.0f - jx * 0.2f);
+    }
+}

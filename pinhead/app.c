@@ -4,40 +4,46 @@
 #include "app.h"
 #include "matrix.h"
 #include "joystick.h"
+#include "engine.h"
+#include "presets.h"
 
 /* ------------------------------------------------------------------ state --- */
 enum { MODE_MATRIX, MODE_PLAY, MODE_GLO };
 static uint8_t mode = MODE_MATRIX;
 static MatrixState matrix;
 static JoystickState joystick;
+static Engine engine;
 static uint8_t glo_page = 0;
+static uint8_t preset_idx = 0;
+static volatile int32_t voice_note = -1;
 
 /* ------------------------------------------------------------------ audio --- */
-static volatile int32_t voice_note = -1;
-static float phase;
-
 void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
 {
-    (void)master_q12;
-    uint32_t i;
-    float inc = voice_note >= 0 ? 440.0f * powf(2.0f, (voice_note - 69) / 12.0f) / 44100.0f : 0.0f;
-    for (i = 0; i < n; i++) {
-        float s = 0.0f;
-        if (inc) {
-            phase += inc;
-            if (phase >= 1.0f) phase -= 1.0f;
-            s = sinf(phase * 6.2831853f) * 0.2f;
-        }
-        lr[2 * i] = lr[2 * i + 1] = (int32_t)(s * 8000000.0f);
+    float L[256], R[256];
+    if (n > 256) n = 256;
+    engine_process(&engine, L, R, (int)n);
+    float g = (float)master_q12 / 4096.0f * 4000000.0f;
+    for (uint32_t i = 0; i < n; i++) {
+        lr[2 * i]     = (int32_t)(L[i] * g);
+        lr[2 * i + 1] = (int32_t)(R[i] * g);
     }
 }
 
-void app_panic(void) { voice_note = -1; }
+void app_panic(void)
+{
+    voice_note = -1;
+    engine_set_gate(&engine, false);
+}
 
 void app_init(void)
 {
     matrix_init(&matrix);
     joystick_init(&joystick);
+    engine_init(&engine, &matrix, &joystick);
+    preset_load(&matrix, 0); /* On the Run */
+    engine_set_note(&engine, 220.0f);
+    engine_set_gate(&engine, true);
 }
 
 /* ------------------------------------------------------------------ UI --- */
@@ -52,18 +58,15 @@ static void draw_matrix(void)
 
     cv_begin(240, 210, C_BLACK);
 
-    /* sticky column headers */
     for (int c = 0; c < size; c++) {
         int px = ox + c * cell;
         cv_text(px - 3, 4, &FONT_XS, COL_HEAD[c], C_GRAY);
     }
-    /* sticky row headers */
     for (int r = 0; r < size; r++) {
         int py = oy + r * cell;
         cv_text(4, py - 4, &FONT_XS, ROW_HEAD[r], C_GRAY);
     }
 
-    /* pins */
     for (int r = 0; r < size; r++) {
         for (int c = 0; c < size; c++) {
             int px = ox + c * cell;
@@ -80,6 +83,7 @@ static void draw_matrix(void)
     }
 
     cv_text(4, 200, &FONT_XS, matrix.full_page ? "FULL" : "CORE", C_GRAY);
+    cv_text(60, 200, &FONT_XS, factory_presets[preset_idx].name, C_HI);
     cv_blit(0, 0);
 }
 
@@ -123,6 +127,10 @@ static void input(void)
         mode = (mode == MODE_GLO) ? MODE_MATRIX : MODE_GLO;
     if ((btn & (1u << B_PLAY)) && !(last_btn & (1u << B_PLAY)))
         mode = (mode == MODE_PLAY) ? MODE_MATRIX : MODE_PLAY;
+    if ((btn & (1u << B_PRESET)) && !(last_btn & (1u << B_PRESET))) {
+        preset_idx = (preset_idx + 1) % PRESET_COUNT;
+        preset_load(&matrix, preset_idx);
+    }
     last_btn = btn;
 }
 
