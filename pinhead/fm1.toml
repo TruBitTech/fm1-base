@@ -1,6 +1,6 @@
 # Pin Head build settings
 name = "PINHEAD"
-id_prefix = "FM-1_PH"
+id_prefix = "FM-1_90"
 usb_manufacturer = "TruBitTech"
 usb_product = "Pin Head FM-1"
 o2 = []
