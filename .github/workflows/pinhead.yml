@@ -23,12 +23,18 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y curl xz-utils python3
+          sudo apt-get install -y curl xz-utils python3 git
 
       - name: Get JieLi toolchain
         run: |
           tools/get_toolchain.sh "$HOME/.jieli"
           echo "JIELI_TOOLCHAIN=$HOME/.jieli/toolchain" >> $GITHUB_ENV
+
+      - name: Get AC79 SDK
+        run: |
+          git clone --depth 1 https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK.git "$HOME/fw-AC79_AIoT_SDK" || \
+            git clone --depth 1 https://github.com/MrUglyHandsome/fw-AC79_AIoT_SDK_v1.2.0.git "$HOME/fw-AC79_AIoT_SDK"
+          echo "AC79_SDK=$HOME/fw-AC79_AIoT_SDK" >> $GITHUB_ENV
 
       - name: Build Pin Head firmware
         run: |
