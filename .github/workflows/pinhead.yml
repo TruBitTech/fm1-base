@@ -23,7 +23,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y curl xz-utils python3 git
+          sudo apt-get install -y curl xz-utils python3 python3-pip python3-pil git
 
       - name: Get JieLi toolchain
         run: |
