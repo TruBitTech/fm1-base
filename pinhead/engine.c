@@ -1,17 +1,13 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #include "engine.h"
 #include "presets.h"
-#include <math.h>
+#include "fastmath.h"
 #include <string.h>
-
-#ifndef M_PI
-#define M_PI 3.14159265358979323846f
-#endif
 
 static float frand(float *seed)
 {
-    *seed = sinf(*seed * 12.9898f) * 43758.5453f;
-    return (*seed - floorf(*seed)) * 2.0f - 1.0f;
+    *seed = fm_sinf(*seed * 12.9898f) * 43758.5453f;
+    return (*seed - (int)(*seed)) * 2.0f - 1.0f;
 }
 
 static float osc_tick(Osc *o, float sr)
