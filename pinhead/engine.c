@@ -2,7 +2,6 @@
 #include "engine.h"
 #include "presets.h"
 #include "fastmath.h"
-#include <string.h>
 
 static float frand(float *seed)
 {
@@ -63,9 +62,15 @@ static float tape_tick(Tape *t, float in, float sr)
     return in * (1.0f - t->mix) + fb * t->mix;
 }
 
+static void clear_bytes(void *p, unsigned n)
+{
+    unsigned char *b = (unsigned char *)p;
+    while (n--) *b++ = 0;
+}
+
 void engine_init(Engine *e, MatrixState *m, JoystickState *j)
 {
-    memset(e, 0, sizeof(*e));
+    clear_bytes(e, sizeof(*e));
     e->matrix = m;
     e->joystick = j;
 
@@ -127,7 +132,7 @@ static void evaluate_matrix(Engine *e, float *dest)
     e->ring_b = sources[5];
     sources[9] = e->ring_a * e->ring_b;
 
-    memset(dest, 0, 16 * sizeof(float));
+    for (int i = 0; i < 16; i++) dest[i] = 0.0f;
 
     for (int r = 0; r < 16; r++) {
         for (int c = 0; c < 16; c++) {
