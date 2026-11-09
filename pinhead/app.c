@@ -66,44 +66,49 @@ static const char *ROW_LABEL[] = {"Osc1","Osc2","Osc3","Filt","Env","Nse","RMod"
 static void draw_matrix(void)
 {
     int size = matrix.full_page ? 16 : 10;
-    int cell = matrix.full_page ? 12 : 18;
-    int ox = 36, oy = 28;
+    /* fit a square grid inside 240x200, leaving room for headers and status */
+    int avail = 180;
+    int cell = avail / size;
+    if (cell < 8) cell = 8;
+    int grid = cell * size;
+    int ox = (240 - grid) / 2;
+    int oy = 16 + (180 - grid) / 2;
 
     cv_begin(240, 210, C_BLACK);
 
     for (int c = 0; c < size; c++) {
-        int px = ox + c * cell;
+        int px = ox + c * cell + cell / 2 - 3;
         if (header_style == 0)
-            cv_text(px - 3, 4, &FONT_XS, COL_HEAD[c], C_GRAY);
+            cv_text(px, 2, &FONT_XS, COL_HEAD[c], C_GRAY);
         else
-            cv_text(px - 8, 2, &FONT_XS, COL_LABEL[c], C_DIM);
+            cv_text(px - 6, 2, &FONT_XS, COL_LABEL[c], C_DIM);
     }
     for (int r = 0; r < size; r++) {
-        int py = oy + r * cell;
+        int py = oy + r * cell + cell / 2 - 4;
         if (header_style == 0)
-            cv_text(4, py - 4, &FONT_XS, ROW_HEAD[r], C_GRAY);
+            cv_text(2, py, &FONT_XS, ROW_HEAD[r], C_GRAY);
         else
-            cv_text(2, py - 6, &FONT_XS, ROW_LABEL[r], C_DIM);
+            cv_text(2, py - 2, &FONT_XS, ROW_LABEL[r], C_DIM);
     }
 
     if (grid_style == 1) {
         for (int i = 0; i <= size; i++) {
-            int x = ox - 2 + i * cell;
-            int y = oy - 2 + i * cell;
-            cv_rect(x, oy - 2, 1, size * cell, C_LINE);
-            cv_rect(ox - 2, y, size * cell, 1, C_LINE);
+            int x = ox + i * cell;
+            int y = oy + i * cell;
+            cv_rect(x, oy, 1, grid, C_LINE);
+            cv_rect(ox, y, grid, 1, C_LINE);
         }
     } else if (grid_style == 2) {
         for (int r = 0; r < size; r++)
             for (int c = 0; c < size; c++)
                 if ((r + c) & 1)
-                    cv_rect(ox + c * cell - 6, oy + r * cell - 6, cell - 2, cell - 2, C_LINE);
+                    cv_rect(ox + c * cell + 1, oy + r * cell + 1, cell - 2, cell - 2, C_LINE);
     }
 
     for (int r = 0; r < size; r++) {
         for (int c = 0; c < size; c++) {
-            int px = ox + c * cell;
-            int py = oy + r * cell;
+            int px = ox + c * cell + cell / 2;
+            int py = oy + r * cell + cell / 2;
             PinType p = matrix.pins[r][c];
             uint16_t col = (grid_style == 0) ? C_DIM : C_BLACK;
             if (p == PIN_WHITE) col = C_WHITE;
