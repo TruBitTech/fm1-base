@@ -2,6 +2,7 @@
  * Pin Head application — complete matrix synth on fm1-base
  */
 #include "app.h"
+#include "fastmath.h"
 #include "matrix.c"
 #include "joystick.c"
 #include "engine.c"
@@ -14,13 +15,19 @@ static MatrixState matrix;
 static JoystickState joystick;
 static Engine engine;
 static uint8_t glo_page = 0;
-static uint8_t preset_idx = 1;          /* start at position 2 (0-based) */
+static uint8_t preset_idx = 1;
 static int8_t octave = 0;
 static uint32_t keys_held;
 
-/* display options */
-static uint8_t header_style = 0;        /* 0 = A/1, 1 = labeled */
-static uint8_t grid_style = 0;          /* 0 = solid, 1 = lines, 2 = checkerboard */
+static uint8_t header_style = 0;
+static uint8_t grid_style = 0;
+
+static float clampf(float v, float lo, float hi)
+{
+    if (v < lo) return lo;
+    if (v > hi) return hi;
+    return v;
+}
 
 /* ------------------------------------------------------------------ audio --- */
 void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
@@ -45,7 +52,7 @@ void app_init(void)
     matrix_init(&matrix);
     joystick_init(&joystick);
     engine_init(&engine, &matrix, &joystick);
-    preset_load(&matrix, PRESET_COUNT - 1); /* Empty Matrix — blank slate */
+    preset_load(&matrix, PRESET_COUNT - 1);
     engine_set_note(&engine, 220.0f);
     engine_set_gate(&engine, false);
 }
@@ -53,8 +60,6 @@ void app_init(void)
 /* ------------------------------------------------------------------ UI --- */
 static const char *COL_HEAD[] = {"A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P"};
 static const char *ROW_HEAD[] = {"1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16"};
-
-/* short labels for the optional labeled headers */
 static const char *COL_LABEL[] = {"Osc1","Osc2","Osc3","Filt","Env","Nse","RMod","Out","Spr","Tape","JoyX","JoyY","Lush","PP","TIn","TOut"};
 static const char *ROW_LABEL[] = {"Osc1","Osc2","Osc3","Filt","Env","Nse","RMod","Out","Spr","Tape","JoyX","JoyY","Lush","PP","TIn","TOut"};
 
@@ -66,7 +71,6 @@ static void draw_matrix(void)
 
     cv_begin(240, 210, C_BLACK);
 
-    /* headers */
     for (int c = 0; c < size; c++) {
         int px = ox + c * cell;
         if (header_style == 0)
@@ -82,22 +86,20 @@ static void draw_matrix(void)
             cv_text(2, py - 6, &FONT_XS, ROW_LABEL[r], C_DIM);
     }
 
-    /* grid background styles */
-    if (grid_style == 1) { /* lines separating pin sets */
+    if (grid_style == 1) {
         for (int i = 0; i <= size; i++) {
             int x = ox - 2 + i * cell;
             int y = oy - 2 + i * cell;
             cv_rect(x, oy - 2, 1, size * cell, C_LINE);
             cv_rect(ox - 2, y, size * cell, 1, C_LINE);
         }
-    } else if (grid_style == 2) { /* checkerboard */
+    } else if (grid_style == 2) {
         for (int r = 0; r < size; r++)
             for (int c = 0; c < size; c++)
                 if ((r + c) & 1)
                     cv_rect(ox + c * cell - 6, oy + r * cell - 6, cell - 2, cell - 2, C_LINE);
     }
 
-    /* pins */
     for (int r = 0; r < size; r++) {
         for (int c = 0; c < size; c++) {
             int px = ox + c * cell;
@@ -159,7 +161,7 @@ static void draw_play(void)
 static void note_on_key(int key)
 {
     int note = 60 + key + octave * 12;
-    float freq = 440.0f * powf(2.0f, (note - 69) / 12.0f);
+    float freq = 440.0f * fm_exp2f((float)(note - 69) / 12.0f);
     engine_set_note(&engine, freq);
     engine_set_gate(&engine, true);
 }
@@ -206,19 +208,19 @@ static void input(void)
                 grid_style = (uint8_t)((grid_style + e + 3) % 3);
         } else {
             if ((e = plat_enc(EN_K1))) {
-                if (glo_page == 0) engine.reverb_mix = fmaxf(0.0f, fminf(1.0f, engine.reverb_mix + e * 0.05f));
-                else if (glo_page == 1) engine.delay_mix = fmaxf(0.0f, fminf(1.0f, engine.delay_mix + e * 0.05f));
-                else if (glo_page == 2) engine.tape.time = fmaxf(0.05f, fminf(1.0f, engine.tape.time + e * 0.02f));
-                else joystick.range_x = fmaxf(0.2f, fminf(2.0f, joystick.range_x + e * 0.05f));
+                if (glo_page == 0) engine.reverb_mix = clampf(engine.reverb_mix + e * 0.05f, 0.0f, 1.0f);
+                else if (glo_page == 1) engine.delay_mix = clampf(engine.delay_mix + e * 0.05f, 0.0f, 1.0f);
+                else if (glo_page == 2) engine.tape.time = clampf(engine.tape.time + e * 0.02f, 0.05f, 1.0f);
+                else joystick.range_x = clampf(joystick.range_x + e * 0.05f, 0.2f, 2.0f);
             }
             if ((e = plat_enc(EN_K2))) {
-                if (glo_page == 0) engine.reverb_decay = fmaxf(0.1f, fminf(0.95f, engine.reverb_decay + e * 0.03f));
-                else if (glo_page == 1) engine.delay_time = fmaxf(0.05f, fminf(1.0f, engine.delay_time + e * 0.02f));
-                else if (glo_page == 2) engine.tape.feedback = fmaxf(0.0f, fminf(0.9f, engine.tape.feedback + e * 0.03f));
-                else joystick.range_y = fmaxf(0.2f, fminf(2.0f, joystick.range_y + e * 0.05f));
+                if (glo_page == 0) engine.reverb_decay = clampf(engine.reverb_decay + e * 0.03f, 0.1f, 0.95f);
+                else if (glo_page == 1) engine.delay_time = clampf(engine.delay_time + e * 0.02f, 0.05f, 1.0f);
+                else if (glo_page == 2) engine.tape.feedback = clampf(engine.tape.feedback + e * 0.03f, 0.0f, 0.9f);
+                else joystick.range_y = clampf(joystick.range_y + e * 0.05f, 0.2f, 2.0f);
             }
             if ((e = plat_enc(EN_K3)) && glo_page == 1)
-                engine.delay_fb = fmaxf(0.0f, fminf(0.9f, engine.delay_fb + e * 0.03f));
+                engine.delay_fb = clampf(engine.delay_fb + e * 0.03f, 0.0f, 0.9f);
         }
     }
 
