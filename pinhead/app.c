@@ -107,8 +107,8 @@ static void draw_matrix(void)
             PinType p = matrix.pins[r][c];
             uint16_t col = (grid_style == 0) ? C_DIM : C_BLACK;
             if (p == PIN_WHITE) col = C_WHITE;
-            else if (p == PIN_RED) col = C_RED;
-            else if (p == PIN_GREEN) col = C_GREEN;
+            else if (p == PIN_RED) col = C_HI;
+            else if (p == PIN_GREEN) col = C_GRAY;
             cv_rect(px - 2, py - 2, 4, 4, col);
             if (c == matrix.cursor_col && r == matrix.cursor_row)
                 cv_rect(px - 5, py - 5, 10, 10, C_HI);
@@ -195,6 +195,10 @@ static void input(void)
             matrix_move_cursor(&matrix, e, 0);
         if ((e = plat_enc(EN_K3)) && e)
             matrix_cycle_pin(&matrix);
+        if ((e = plat_enc(EN_PRESET))) {
+            preset_idx = (uint8_t)((preset_idx + e + PRESET_COUNT) % PRESET_COUNT);
+            preset_load(&matrix, preset_idx);
+        }
     } else if (mode == MODE_PLAY) {
         float rx = 0.0f, ry = 0.0f;
         if ((e = plat_enc(EN_K1))) rx = e * 0.05f;
@@ -229,7 +233,7 @@ static void input(void)
         mode = (mode == MODE_GLO) ? MODE_MATRIX : MODE_GLO;
     if ((btn & (1u << B_PLAY)) && !(last_btn & (1u << B_PLAY)))
         mode = (mode == MODE_PLAY) ? MODE_MATRIX : MODE_PLAY;
-    if ((btn & (1u << B_PRESET)) && !(last_btn & (1u << B_PRESET))) {
+    if ((btn & (1u << B_ARP)) && !(last_btn & (1u << B_ARP))) {
         preset_idx = (preset_idx + 1) % PRESET_COUNT;
         preset_load(&matrix, preset_idx);
     }
