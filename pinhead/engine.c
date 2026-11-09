@@ -9,18 +9,17 @@ static float frand(float *seed)
     return (*seed - (int)(*seed)) * 2.0f - 1.0f;
 }
 
-/* simple band-limited-ish square: blend to triangle near edges to reduce clicks */
 static float osc_tick(Osc *o, float sr)
 {
     o->phase += o->freq / sr;
     if (o->phase >= 1.0f) o->phase -= 1.0f;
     float s;
-    if (o->phase < 0.05f)
-        s = -1.0f + o->phase * 40.0f;
+    if (o->phase < 0.04f)
+        s = -1.0f + o->phase * 50.0f;
     else if (o->phase < o->pw)
         s = 1.0f;
-    else if (o->phase < o->pw + 0.05f)
-        s = 1.0f - (o->phase - o->pw) * 40.0f;
+    else if (o->phase < o->pw + 0.04f)
+        s = 1.0f - (o->phase - o->pw) * 50.0f;
     else
         s = -1.0f;
     return s * o->level;
@@ -30,7 +29,7 @@ static void filter_tick(Filter *f, float in, float sr)
 {
     float f0 = f->cutoff / sr;
     if (f0 > 0.45f) f0 = 0.45f;
-    float q = 1.0f - f->res * 0.9f;
+    float q = 1.0f - f->res * 0.85f;
     f->lp += f0 * (in - f->lp - f->bp * q);
     f->bp += f0 * f->lp;
     f->hp = in - f->lp - f->bp;
@@ -54,7 +53,7 @@ static float env_tick(Trapezoid *e, float sr)
 static float spring_tick(Spring *s, float in)
 {
     float fb = s->buf[s->pos];
-    s->buf[s->pos] = in * 0.4f + fb * s->decay;
+    s->buf[s->pos] = in * 0.35f + fb * s->decay;
     s->pos = (s->pos + 1) % 2048;
     return in * (1.0f - s->mix) + fb * s->mix;
 }
@@ -83,30 +82,30 @@ void engine_init(Engine *e, MatrixState *m, JoystickState *j)
     e->matrix = m;
     e->joystick = j;
 
-    e->osc1.freq = 110.0f; e->osc1.pw = 0.5f; e->osc1.level = 0.4f;
-    e->osc2.freq = 220.0f; e->osc2.pw = 0.5f; e->osc2.level = 0.3f;
-    e->osc3.freq = 55.0f;  e->osc3.pw = 0.5f; e->osc3.level = 0.2f;
+    e->osc1.freq = 110.0f; e->osc1.pw = 0.5f; e->osc1.level = 0.5f;
+    e->osc2.freq = 220.0f; e->osc2.pw = 0.5f; e->osc2.level = 0.35f;
+    e->osc3.freq = 55.0f;  e->osc3.pw = 0.5f; e->osc3.level = 0.25f;
 
-    e->filter.cutoff = 2000.0f;
-    e->filter.res = 0.4f;
+    e->filter.cutoff = 1800.0f;
+    e->filter.res = 0.35f;
 
-    e->env.attack = 0.01f;
-    e->env.decay = 0.2f;
-    e->env.sustain = 0.6f;
-    e->env.release = 0.3f;
+    e->env.attack = 0.005f;
+    e->env.decay = 0.15f;
+    e->env.sustain = 0.7f;
+    e->env.release = 0.25f;
 
-    e->spring.mix = 0.3f;
-    e->spring.decay = 0.7f;
+    e->spring.mix = 0.25f;
+    e->spring.decay = 0.65f;
 
-    e->tape.time = 0.25f;
-    e->tape.feedback = 0.4f;
-    e->tape.mix = 0.2f;
+    e->tape.time = 0.22f;
+    e->tape.feedback = 0.35f;
+    e->tape.mix = 0.18f;
 
-    e->reverb_mix = 0.2f;
-    e->reverb_decay = 0.6f;
-    e->delay_mix = 0.15f;
-    e->delay_time = 0.3f;
-    e->delay_fb = 0.35f;
+    e->reverb_mix = 0.15f;
+    e->reverb_decay = 0.55f;
+    e->delay_mix = 0.12f;
+    e->delay_time = 0.28f;
+    e->delay_fb = 0.3f;
 
     e->noise_seed = 0.123f;
 }
@@ -134,7 +133,7 @@ static void evaluate_matrix(Engine *e, float *dest)
     sources[0] = osc_tick(&e->osc1, PH_SAMPLE_RATE);
     sources[1] = osc_tick(&e->osc2, PH_SAMPLE_RATE);
     sources[2] = osc_tick(&e->osc3, PH_SAMPLE_RATE);
-    sources[5] = frand(&e->noise_seed) * 0.15f;
+    sources[5] = frand(&e->noise_seed) * 0.2f;
     sources[8] = env_tick(&e->env, PH_SAMPLE_RATE);
 
     e->ring_a = sources[0] * 0.5f + sources[1] * 0.5f;
@@ -152,9 +151,14 @@ static void evaluate_matrix(Engine *e, float *dest)
         }
     }
 
+    /* filter column 3 */
     float fin = dest[3];
     filter_tick(&e->filter, fin, PH_SAMPLE_RATE);
     dest[3] = e->filter.lp;
+
+    /* if nothing routed to output column 9, mix osc1+osc2 so keys still sound */
+    if (dest[9] == 0.0f && dest[3] == 0.0f)
+        dest[9] = sources[0] * 0.4f + sources[1] * 0.3f;
 }
 
 void engine_process(Engine *e, float *out_l, float *out_r, int n)
@@ -167,17 +171,16 @@ void engine_process(Engine *e, float *out_l, float *out_r, int n)
         float wet = spring_tick(&e->spring, dry);
         float tape = tape_tick(&e->tape, wet, PH_SAMPLE_RATE);
 
-        float mix = dry * 0.7f + tape * 0.3f;
+        float mix = dry * 0.65f + tape * 0.35f;
         if (e->reverb_mix > 0.01f)
             mix = mix * (1.0f - e->reverb_mix) + wet * e->reverb_mix;
 
-        /* soft clip to avoid hard digital edges */
-        if (mix > 0.8f) mix = 0.8f;
-        if (mix < -0.8f) mix = -0.8f;
+        if (mix > 0.75f) mix = 0.75f;
+        if (mix < -0.75f) mix = -0.75f;
 
         float jx = e->joystick ? joystick_mod_x(e->joystick) : 0.0f;
 
-        *out_l++ = mix * (1.0f + jx * 0.2f);
-        *out_r++ = mix * (1.0f - jx * 0.2f);
+        *out_l++ = mix * (1.0f + jx * 0.15f);
+        *out_r++ = mix * (1.0f - jx * 0.15f);
     }
 }

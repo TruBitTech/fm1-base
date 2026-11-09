@@ -66,7 +66,6 @@ static const char *ROW_LABEL[] = {"Osc1","Osc2","Osc3","Filt","Env","Nse","RMod"
 static void draw_matrix(void)
 {
     int size = matrix.full_page ? 16 : 10;
-    /* fit a square grid inside 240x200, leaving room for headers and status */
     int avail = 180;
     int cell = avail / size;
     if (cell < 8) cell = 8;
@@ -115,8 +114,13 @@ static void draw_matrix(void)
             else if (p == PIN_RED) col = C_HI;
             else if (p == PIN_GREEN) col = C_GRAY;
             cv_rect(px - 2, py - 2, 4, 4, col);
-            if (c == matrix.cursor_col && r == matrix.cursor_row)
-                cv_rect(px - 5, py - 5, 10, 10, C_HI);
+            /* outline circle so the pin color stays visible */
+            if (c == matrix.cursor_col && r == matrix.cursor_row) {
+                cv_rect(px - 6, py - 6, 12, 1, C_HI);
+                cv_rect(px - 6, py + 5, 12, 1, C_HI);
+                cv_rect(px - 6, py - 5, 1, 10, C_HI);
+                cv_rect(px + 5, py - 5, 1, 10, C_HI);
+            }
         }
     }
 
@@ -198,7 +202,8 @@ static void input(void)
             matrix_move_cursor(&matrix, 0, e);
         if ((e = plat_enc(EN_K2)))
             matrix_move_cursor(&matrix, e, 0);
-        if ((e = plat_enc(EN_K3)) && e)
+        /* K3 or EDIT button cycles the pin */
+        if ((e = plat_enc(EN_K3)))
             matrix_cycle_pin(&matrix);
         if ((e = plat_enc(EN_PRESET))) {
             preset_idx = (uint8_t)((preset_idx + e + PRESET_COUNT) % PRESET_COUNT);
@@ -242,6 +247,9 @@ static void input(void)
         preset_idx = (preset_idx + 1) % PRESET_COUNT;
         preset_load(&matrix, preset_idx);
     }
+    /* EDIT button also cycles the pin (backup for K3) */
+    if ((btn & (1u << B_EDIT)) && !(last_btn & (1u << B_EDIT)) && mode == MODE_MATRIX)
+        matrix_cycle_pin(&matrix);
     if ((btn & (1u << B_OCTUP)) && !(last_btn & (1u << B_OCTUP)))
         octave = (int8_t)(octave < 2 ? octave + 1 : 2);
     if ((btn & (1u << B_OCTDN)) && !(last_btn & (1u << B_OCTDN)))
