@@ -23,14 +23,13 @@ static float frand(float *seed)
     return (*seed - (int)(*seed)) * 2.0f - 1.0f;
 }
 
-static float clampf(float v, float lo, float hi)
+static float eclamp(float v, float lo, float hi)
 {
     if (v < lo) return lo;
     if (v > hi) return hi;
     return v;
 }
 
-/* soft square / pulse */
 static float wave_pulse(float phase, float pw)
 {
     float edge = 0.03f;
@@ -135,7 +134,7 @@ void engine_init(Engine *e, MatrixState *m, JoystickState *j)
 
     e->osc1.freq = 220.0f; e->osc1.pw = 0.5f; e->osc1.level = 0.5f;
     e->osc2.freq = 330.0f; e->osc2.pw = 0.4f; e->osc2.level = 0.4f;
-    e->osc3.freq = 1.2f;   e->osc3.pw = 0.5f; e->osc3.level = 0.8f; /* LFO */
+    e->osc3.freq = 1.2f;   e->osc3.pw = 0.5f; e->osc3.level = 0.8f;
 
     e->filter.cutoff = 1800.0f;
     e->filter.res = 0.3f;
@@ -167,7 +166,6 @@ void engine_set_note(Engine *e, float freq)
 {
     e->osc1.freq = freq;
     e->osc2.freq = freq * 1.5f;
-    /* osc3 remains LFO; matrix column K can modulate it */
 }
 
 void engine_load_preset(Engine *e, int index)
@@ -175,7 +173,6 @@ void engine_load_preset(Engine *e, int index)
     if (e->matrix) preset_load(e->matrix, index);
 }
 
-/* previous-sample feedback sources so filter/ring/tape can be patched */
 static float filt_out, ring_out, tape_out, spring_out;
 
 static void evaluate_matrix(Engine *e, float *dest)
@@ -185,17 +182,16 @@ static void evaluate_matrix(Engine *e, float *dest)
 
     float sr = (float)PH_SAMPLE_RATE;
 
-    /* base frequencies (reset each sample so mods don't accumulate) */
     float f1 = e->osc1.freq;
     float f2 = e->osc2.freq;
     float f3 = e->osc3.freq;
 
     float sources[16];
-    sources[0] = osc_tick(&e->osc1, sr, 0.0f); /* sine */
+    sources[0] = osc_tick(&e->osc1, sr, 0.0f);
     sources[1] = wave_saw(e->osc1.phase) * e->osc1.level;
-    sources[2] = osc_tick(&e->osc2, sr, 2.0f); /* pulse */
+    sources[2] = osc_tick(&e->osc2, sr, 2.0f);
     sources[3] = wave_tri(e->osc2.phase) * e->osc2.level;
-    sources[4] = osc_tick(&e->osc3, sr, 2.0f); /* LFO pulse */
+    sources[4] = osc_tick(&e->osc3, sr, 2.0f);
     sources[5] = wave_tri(e->osc3.phase) * e->osc3.level;
     sources[6] = frand(&e->noise_seed) * 0.25f;
     sources[7] = 0.0f;
@@ -218,25 +214,18 @@ static void evaluate_matrix(Engine *e, float *dest)
         }
     }
 
-    /* frequency mods (columns I J K) — additive, not accumulating */
-    e->osc1.freq = clampf(f1 + dest[8] * 80.0f, 20.0f, 8000.0f);
-    e->osc2.freq = clampf(f2 + dest[9] * 80.0f, 20.0f, 8000.0f);
-    e->osc3.freq = clampf(f3 + dest[10] * 4.0f, 0.1f, 40.0f);
+    e->osc1.freq = eclamp(f1 + dest[8] * 80.0f, 20.0f, 8000.0f);
+    e->osc2.freq = eclamp(f2 + dest[9] * 80.0f, 20.0f, 8000.0f);
+    e->osc3.freq = eclamp(f3 + dest[10] * 4.0f, 0.1f, 40.0f);
 
-    /* filter: column H = signal in, column N = freq mod */
     float fin = dest[7];
     float base_cut = 1200.0f;
-    e->filter.cutoff = clampf(base_cut + dest[13] * 2500.0f, 80.0f, 8000.0f);
+    e->filter.cutoff = eclamp(base_cut + dest[13] * 2500.0f, 80.0f, 8000.0f);
     filter_tick(&e->filter, fin, sr);
     filt_out = e->filter.lp;
 
-    /* ring: columns E * F */
     ring_out = dest[4] * dest[5];
-
-    /* tape: column P = in, row 15 = out */
     tape_out = tape_tick(&e->tape, dest[15], sr);
-
-    /* spring: column G = in */
     spring_out = spring_tick(&e->spring, dest[6]);
 }
 
@@ -248,7 +237,6 @@ void engine_process(Engine *e, float *out_l, float *out_r, int n)
 
         float dry = dest[0] + dest[2] * 0.8f;
 
-        /* global post effects (outside the matrix) */
         if (e->reverb_mix > 0.01f)
             dry = dry * (1.0f - e->reverb_mix) + spring_out * e->reverb_mix;
 
