@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MPL-2.0
- * Pin Head application — complete matrix synth on fm1-base
+ * Pin Head application — Synthi-style matrix on fm1-base
  */
 #include "app.h"
 #include "fastmath.h"
@@ -8,14 +8,13 @@
 #include "engine.c"
 #include "presets.c"
 
-/* ------------------------------------------------------------------ state --- */
 enum { MODE_MATRIX, MODE_PLAY, MODE_GLO };
 static uint8_t mode = MODE_MATRIX;
 static MatrixState matrix;
 static JoystickState joystick;
 static Engine engine;
 static uint8_t glo_page = 0;
-static uint8_t preset_idx = 1;
+static uint8_t preset_idx = 0;
 static int8_t octave = 0;
 static uint32_t keys_held;
 
@@ -29,7 +28,6 @@ static float clampf(float v, float lo, float hi)
     return v;
 }
 
-/* ------------------------------------------------------------------ audio --- */
 void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
 {
     float L[256], R[256];
@@ -42,33 +40,30 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
     }
 }
 
-void app_panic(void)
-{
-    engine_set_gate(&engine, false);
-}
+void app_panic(void) { engine_set_gate(&engine, false); }
 
 void app_init(void)
 {
     matrix_init(&matrix);
     joystick_init(&joystick);
     engine_init(&engine, &matrix, &joystick);
-    preset_load(&matrix, PRESET_COUNT - 1);
+    preset_idx = 0;
+    preset_load(&matrix, 0);
     engine_set_note(&engine, 220.0f);
     engine_set_gate(&engine, false);
 }
 
-/* ------------------------------------------------------------------ UI --- */
 static const char *COL_HEAD[] = {"A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P"};
 static const char *ROW_HEAD[] = {"1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16"};
 
 static const char *COL_LABEL[] = {
-    "Out1", "Mtr", "Out2", "Env", "RngA", "RngB", "Rev", "Filt", 
-    "O1F", "O2F", "O3F", "Dec", "RMx", "FF", "Lv1", "Lv2"
+    "Out1", "Mtr", "Out2", "Env", "RngA", "RngB", "Rev", "Filt",
+    "O1F", "O2F", "O3F", "Dec", "Sp", "FF", "Lv1", "Tape"
 };
 
 static const char *ROW_LABEL[] = {
-    "O1s", "O1w", "O2p", "O2t", "O3p", "O3t", "Nse", "In1", 
-    "In2", "Flt", "Trp", "EnS", "Rng", "Rev", "StX", "StY"
+    "O1s", "O1w", "O2p", "O2t", "O3p", "O3t", "Nse", "In1",
+    "In2", "Flt", "Trp", "EnS", "Rng", "Rev", "StX", "Tape"
 };
 
 static void draw_vert(int x, int y, const char *s)
@@ -101,7 +96,6 @@ static void draw_matrix(void)
 
     cv_begin(240, 240, C_BLACK);
 
-    /* sticky column headers */
     for (int c = 0; c < size; c++) {
         int abs_c = sc + c;
         int px = ox + c * cell + cell / 2 - 2;
@@ -110,7 +104,6 @@ static void draw_matrix(void)
         else
             draw_vert(px, oy - 6, COL_LABEL[abs_c]);
     }
-    /* sticky row headers */
     for (int r = 0; r < size; r++) {
         int abs_r = sr + r;
         int py = oy + r * cell + cell / 2 - 3;
@@ -140,11 +133,11 @@ static void draw_matrix(void)
             int abs_c = sc + c;
             int px = ox + c * cell + cell / 2;
             int py = oy + r * cell + cell / 2;
-            PinType p = matrix.pins[abs_r][abs_c];
+            PinType pin = matrix.pins[abs_r][abs_c];
             uint16_t col = (grid_style == 0) ? C_DIM : C_BLACK;
-            if (p == PIN_WHITE) col = C_WHITE;
-            else if (p == PIN_RED) col = C_HI;
-            else if (p == PIN_GREEN) col = C_GRAY;
+            if (pin == PIN_WHITE) col = C_WHITE;
+            else if (pin == PIN_RED) col = C_HI;
+            else if (pin == PIN_GREEN) col = C_GRAY;
             cv_rect(px - 2, py - 2, 4, 4, col);
             if (abs_c == matrix.cursor_col && abs_r == matrix.cursor_row) {
                 cv_rect(px - 5, py - 5, 10, 1, C_HI);
@@ -155,7 +148,6 @@ static void draw_matrix(void)
         }
     }
 
-    /* status bar with preset name */
     cv_text(2, 226, &FONT_XS, matrix.full_page ? "FULL" : "CORE", C_GRAY);
     cv_text(40, 226, &FONT_XS, factory_presets[preset_idx].name, C_HI);
     cv_blit(0, 0);
@@ -180,11 +172,12 @@ static void draw_glo(void)
         cv_text(10, 60, &FONT_XS, "K1 Range X", C_GRAY);
         cv_text(10, 80, &FONT_XS, "K2 Range Y", C_GRAY);
     } else {
-        cv_text(10, 60, &FONT_XS, "K1 Headers", C_GRAY);
-        cv_text(10, 80, &FONT_XS, header_style ? "Labeled" : "A/1", C_HI);
-        cv_text(10, 110, &FONT_XS, "K2 Grid", C_GRAY);
+        cv_text(10, 50, &FONT_XS, "K1 Headers", C_GRAY);
+        cv_text(10, 70, &FONT_XS, header_style ? "Labeled" : "A / 1", C_HI);
+        cv_text(10, 100, &FONT_XS, "K2 Grid", C_GRAY);
         const char *g = grid_style == 0 ? "Solid" : grid_style == 1 ? "Lines" : "Checker";
-        cv_text(10, 130, &FONT_XS, g, C_HI);
+        cv_text(10, 120, &FONT_XS, g, C_HI);
+        cv_text(10, 160, &FONT_XS, "Exit GLO to see matrix", C_DIM);
     }
     cv_blit(0, 0);
 }
@@ -226,7 +219,7 @@ static void input(void)
         if (mode == MODE_MATRIX)
             matrix_set_view(&matrix, !matrix.full_page);
         else if (mode == MODE_GLO)
-            glo_page = (uint8_t)((glo_page + e) % 5);
+            glo_page = (uint8_t)((glo_page + (e > 0 ? 1 : 4)) % 5);
     }
 
     if (mode == MODE_MATRIX) {
@@ -248,9 +241,9 @@ static void input(void)
     } else if (mode == MODE_GLO) {
         if (glo_page == 4) {
             if ((e = plat_enc(EN_K1)))
-                header_style = (header_style + e) & 1;
+                header_style = (header_style + (e > 0 ? 1 : 1)) & 1;
             if ((e = plat_enc(EN_K2)))
-                grid_style = (uint8_t)((grid_style + e + 3) % 3);
+                grid_style = (uint8_t)((grid_style + (e > 0 ? 1 : 2)) % 3);
         } else {
             if ((e = plat_enc(EN_K1))) {
                 if (glo_page == 0) engine.reverb_mix = clampf(engine.reverb_mix + e * 0.05f, 0.0f, 1.0f);
@@ -289,10 +282,7 @@ static void input(void)
 
 void app_input_only(void) { input(); }
 
-void app_ui_init(void)
-{
-    lcd_fill(0, 0, 240, 240, C_BLACK);
-}
+void app_ui_init(void) { lcd_fill(0, 0, 240, 240, C_BLACK); }
 
 void app_frame(void)
 {
