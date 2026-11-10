@@ -71,12 +71,13 @@ static const char *ROW_LABEL[] = {
     "In2", "Flt", "Trp", "EnS", "Rng", "Rev", "StX", "StY"
 };
 
-static void draw_diag(int x, int y, const char *s)
+/* draw label vertically: first char at the column, subsequent chars above it (spelled away) */
+static void draw_vert(int x, int y, const char *s)
 {
     int i = 0;
     while (s[i] && i < 6) {
         char ch[2] = {s[i], 0};
-        cv_text(x + i * 4, y - i * 4, &FONT_XS, ch, C_DIM);
+        cv_text(x, y - i * 7, &FONT_XS, ch, C_DIM);
         i++;
     }
 }
@@ -84,9 +85,8 @@ static void draw_diag(int x, int y, const char *s)
 static void draw_matrix(void)
 {
     int size = matrix.full_page ? 16 : 10;
-    /* 240x240 screen. Full page uses smaller cells so 16x16 fits. */
-    int top = matrix.full_page ? 10 : 14;
-    int bottom = 12;
+    int top = matrix.full_page ? 28 : 20;
+    int bottom = 14;
     int left = 12;
     int avail_h = 240 - top - bottom;
     int avail_w = 240 - left - 2;
@@ -100,11 +100,11 @@ static void draw_matrix(void)
     cv_begin(240, 240, C_BLACK);
 
     for (int c = 0; c < size; c++) {
-        int px = ox + c * cell + cell / 2;
+        int px = ox + c * cell + cell / 2 - 2;
         if (header_style == 0)
-            cv_text(px - 2, 1, &FONT_XS, COL_HEAD[c], C_GRAY);
+            cv_text(px, 1, &FONT_XS, COL_HEAD[c], C_GRAY);
         else
-            draw_diag(px - 1, 10, COL_LABEL[c]);
+            draw_vert(px, oy - 8, COL_LABEL[c]);
     }
     for (int r = 0; r < size; r++) {
         int py = oy + r * cell + cell / 2 - 3;
@@ -147,6 +147,7 @@ static void draw_matrix(void)
         }
     }
 
+    /* preset name at the bottom */
     cv_text(2, 230, &FONT_XS, matrix.full_page ? "FULL" : "CORE", C_GRAY);
     cv_text(36, 230, &FONT_XS, factory_presets[preset_idx].name, C_HI);
     cv_blit(0, 0);
