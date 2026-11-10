@@ -71,13 +71,12 @@ static const char *ROW_LABEL[] = {
     "In2", "Flt", "Trp", "EnS", "Rng", "Rev", "StX", "StY"
 };
 
-/* draw a short label on a 45-degree diagonal upward to the right */
 static void draw_diag(int x, int y, const char *s)
 {
     int i = 0;
     while (s[i] && i < 6) {
         char ch[2] = {s[i], 0};
-        cv_text(x + i * 5, y - i * 5, &FONT_XS, ch, C_DIM);
+        cv_text(x + i * 4, y - i * 4, &FONT_XS, ch, C_DIM);
         i++;
     }
 }
@@ -85,33 +84,34 @@ static void draw_diag(int x, int y, const char *s)
 static void draw_matrix(void)
 {
     int size = matrix.full_page ? 16 : 10;
-    /* leave room for diagonal headers at top and status at bottom */
-    int top_margin = 28;
-    int bottom_margin = 18;
-    int avail_h = 210 - top_margin - bottom_margin;
-    int avail_w = 220;
+    /* full 240x240 screen, minimal margins */
+    int top = 14;
+    int bottom = 12;
+    int left = 14;
+    int avail_h = 240 - top - bottom;
+    int avail_w = 240 - left - 4;
     int cell = avail_h / size;
     if (cell > avail_w / size) cell = avail_w / size;
     if (cell < 6) cell = 6;
     int grid = cell * size;
-    int ox = 16 + (220 - grid) / 2;
-    int oy = top_margin;
+    int ox = left + (avail_w - grid) / 2;
+    int oy = top;
 
-    cv_begin(240, 220, C_BLACK);
+    cv_begin(240, 240, C_BLACK);
 
     for (int c = 0; c < size; c++) {
         int px = ox + c * cell + cell / 2;
         if (header_style == 0)
-            cv_text(px - 3, 2, &FONT_XS, COL_HEAD[c], C_GRAY);
+            cv_text(px - 3, 1, &FONT_XS, COL_HEAD[c], C_GRAY);
         else
-            draw_diag(px - 4, 22, COL_LABEL[c]);
+            draw_diag(px - 2, 12, COL_LABEL[c]);
     }
     for (int r = 0; r < size; r++) {
-        int py = oy + r * cell + cell / 2 - 4;
+        int py = oy + r * cell + cell / 2 - 3;
         if (header_style == 0)
-            cv_text(2, py, &FONT_XS, ROW_HEAD[r], C_GRAY);
+            cv_text(1, py, &FONT_XS, ROW_HEAD[r], C_GRAY);
         else
-            cv_text(2, py - 2, &FONT_XS, ROW_LABEL[r], C_DIM);
+            cv_text(1, py - 1, &FONT_XS, ROW_LABEL[r], C_DIM);
     }
 
     if (grid_style == 1) {
@@ -139,24 +139,23 @@ static void draw_matrix(void)
             else if (p == PIN_GREEN) col = C_GRAY;
             cv_rect(px - 2, py - 2, 4, 4, col);
             if (c == matrix.cursor_col && r == matrix.cursor_row) {
-                cv_rect(px - 6, py - 6, 12, 1, C_HI);
-                cv_rect(px - 6, py + 5, 12, 1, C_HI);
-                cv_rect(px - 6, py - 5, 1, 10, C_HI);
-                cv_rect(px + 5, py - 5, 1, 10, C_HI);
+                cv_rect(px - 5, py - 5, 10, 1, C_HI);
+                cv_rect(px - 5, py + 4, 10, 1, C_HI);
+                cv_rect(px - 5, py - 4, 1, 8, C_HI);
+                cv_rect(px + 4, py - 4, 1, 8, C_HI);
             }
         }
     }
 
-    /* status bar at the bottom */
-    cv_text(4, 206, &FONT_XS, matrix.full_page ? "FULL" : "CORE", C_GRAY);
-    cv_text(40, 206, &FONT_XS, factory_presets[preset_idx].name, C_HI);
+    cv_text(2, 230, &FONT_XS, matrix.full_page ? "FULL" : "CORE", C_GRAY);
+    cv_text(36, 230, &FONT_XS, factory_presets[preset_idx].name, C_HI);
     cv_blit(0, 0);
 }
 
 static void draw_glo(void)
 {
     static const char *PAGES[] = {"LUSH REVERB", "PING-PONG", "TAPE DELAY", "JOYSTICK", "DISPLAY"};
-    cv_begin(240, 200, C_BLACK);
+    cv_begin(240, 240, C_BLACK);
     cv_text(10, 20, &FONT_B, PAGES[glo_page], C_WHITE);
     if (glo_page == 0) {
         cv_text(10, 60, &FONT_XS, "K1 Mix", C_GRAY);
@@ -183,7 +182,7 @@ static void draw_glo(void)
 
 static void draw_play(void)
 {
-    cv_begin(240, 200, C_BLACK);
+    cv_begin(240, 240, C_BLACK);
     cv_text(10, 20, &FONT_B, "PLAY", C_WHITE);
     cv_text(10, 50, &FONT_XS, "K1 = Joystick X", C_GRAY);
     cv_text(10, 70, &FONT_XS, "K2 = Joystick Y", C_GRAY);
