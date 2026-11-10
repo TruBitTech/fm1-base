@@ -58,40 +58,53 @@ void app_init(void)
 }
 
 /* ------------------------------------------------------------------ UI --- */
-/* Authentic Synthi / VCS3 matrix labels */
 static const char *COL_HEAD[] = {"A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P"};
 static const char *ROW_HEAD[] = {"1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16"};
 
-/* Columns A-P = inputs */
 static const char *COL_LABEL[] = {
-    "Out1", "Meter", "Out2", "Env", "RingA", "RingB", "Reverb", "Filt", 
-    "Osc1F", "Osc2F", "Osc3F", "Decay", "RevMx", "FiltF", "Lvl1", "Lvl2"
+    "Out1", "Mtr", "Out2", "Env", "RngA", "RngB", "Rev", "Filt", 
+    "O1F", "O2F", "O3F", "Dec", "RMx", "FF", "Lv1", "Lv2"
 };
 
-/* Rows 1-16 = sources / treatments */
 static const char *ROW_LABEL[] = {
-    "O1sin", "O1saw", "O2pls", "O2tri", "O3pls", "O3tri", "Noise", "In1", 
-    "In2", "Filt", "Trap", "EnvS", "Ring", "Rev", "StkX", "StkY"
+    "O1s", "O1w", "O2p", "O2t", "O3p", "O3t", "Nse", "In1", 
+    "In2", "Flt", "Trp", "EnS", "Rng", "Rev", "StX", "StY"
 };
+
+/* draw a short label on a 45-degree diagonal upward to the right */
+static void draw_diag(int x, int y, const char *s)
+{
+    int i = 0;
+    while (s[i] && i < 6) {
+        char ch[2] = {s[i], 0};
+        cv_text(x + i * 5, y - i * 5, &FONT_XS, ch, C_DIM);
+        i++;
+    }
+}
 
 static void draw_matrix(void)
 {
     int size = matrix.full_page ? 16 : 10;
-    int avail = 180;
-    int cell = avail / size;
-    if (cell < 8) cell = 8;
+    /* leave room for diagonal headers at top and status at bottom */
+    int top_margin = 28;
+    int bottom_margin = 18;
+    int avail_h = 210 - top_margin - bottom_margin;
+    int avail_w = 220;
+    int cell = avail_h / size;
+    if (cell > avail_w / size) cell = avail_w / size;
+    if (cell < 6) cell = 6;
     int grid = cell * size;
-    int ox = (240 - grid) / 2;
-    int oy = 16 + (180 - grid) / 2;
+    int ox = 16 + (220 - grid) / 2;
+    int oy = top_margin;
 
-    cv_begin(240, 210, C_BLACK);
+    cv_begin(240, 220, C_BLACK);
 
     for (int c = 0; c < size; c++) {
-        int px = ox + c * cell + cell / 2 - 3;
+        int px = ox + c * cell + cell / 2;
         if (header_style == 0)
-            cv_text(px, 2, &FONT_XS, COL_HEAD[c], C_GRAY);
+            cv_text(px - 3, 2, &FONT_XS, COL_HEAD[c], C_GRAY);
         else
-            cv_text(px - 8, 2, &FONT_XS, COL_LABEL[c], C_DIM);
+            draw_diag(px - 4, 22, COL_LABEL[c]);
     }
     for (int r = 0; r < size; r++) {
         int py = oy + r * cell + cell / 2 - 4;
@@ -134,8 +147,9 @@ static void draw_matrix(void)
         }
     }
 
-    cv_text(4, 200, &FONT_XS, matrix.full_page ? "FULL" : "CORE", C_GRAY);
-    cv_text(50, 200, &FONT_XS, factory_presets[preset_idx].name, C_HI);
+    /* status bar at the bottom */
+    cv_text(4, 206, &FONT_XS, matrix.full_page ? "FULL" : "CORE", C_GRAY);
+    cv_text(40, 206, &FONT_XS, factory_presets[preset_idx].name, C_HI);
     cv_blit(0, 0);
 }
 
