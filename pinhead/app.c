@@ -84,15 +84,15 @@ static void draw_diag(int x, int y, const char *s)
 static void draw_matrix(void)
 {
     int size = matrix.full_page ? 16 : 10;
-    /* full 240x240 screen, minimal margins */
-    int top = 14;
+    /* 240x240 screen. Full page uses smaller cells so 16x16 fits. */
+    int top = matrix.full_page ? 10 : 14;
     int bottom = 12;
-    int left = 14;
+    int left = 12;
     int avail_h = 240 - top - bottom;
-    int avail_w = 240 - left - 4;
+    int avail_w = 240 - left - 2;
     int cell = avail_h / size;
     if (cell > avail_w / size) cell = avail_w / size;
-    if (cell < 6) cell = 6;
+    if (cell < 5) cell = 5;
     int grid = cell * size;
     int ox = left + (avail_w - grid) / 2;
     int oy = top;
@@ -102,9 +102,9 @@ static void draw_matrix(void)
     for (int c = 0; c < size; c++) {
         int px = ox + c * cell + cell / 2;
         if (header_style == 0)
-            cv_text(px - 3, 1, &FONT_XS, COL_HEAD[c], C_GRAY);
+            cv_text(px - 2, 1, &FONT_XS, COL_HEAD[c], C_GRAY);
         else
-            draw_diag(px - 2, 12, COL_LABEL[c]);
+            draw_diag(px - 1, 10, COL_LABEL[c]);
     }
     for (int r = 0; r < size; r++) {
         int py = oy + r * cell + cell / 2 - 3;
@@ -137,12 +137,12 @@ static void draw_matrix(void)
             if (p == PIN_WHITE) col = C_WHITE;
             else if (p == PIN_RED) col = C_HI;
             else if (p == PIN_GREEN) col = C_GRAY;
-            cv_rect(px - 2, py - 2, 4, 4, col);
+            cv_rect(px - 1, py - 1, 3, 3, col);
             if (c == matrix.cursor_col && r == matrix.cursor_row) {
-                cv_rect(px - 5, py - 5, 10, 1, C_HI);
-                cv_rect(px - 5, py + 4, 10, 1, C_HI);
-                cv_rect(px - 5, py - 4, 1, 8, C_HI);
-                cv_rect(px + 4, py - 4, 1, 8, C_HI);
+                cv_rect(px - 4, py - 4, 8, 1, C_HI);
+                cv_rect(px - 4, py + 3, 8, 1, C_HI);
+                cv_rect(px - 4, py - 3, 1, 6, C_HI);
+                cv_rect(px + 3, py - 3, 1, 6, C_HI);
             }
         }
     }
