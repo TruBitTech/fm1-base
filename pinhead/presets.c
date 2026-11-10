@@ -7,64 +7,60 @@ static void p(MatrixState *m, uint8_t row, uint8_t col, PinType t)
         m->pins[row][col] = t;
 }
 
-/* Row sources: 0=Osc1, 1=Osc2, 2=Osc3, 5=Noise, 8=Env, 9=Ring */
-/* Col destinations: 3=Filter, 9=Output */
+/* Rows: 0=O1sin, 1=O1saw, 2=O2pls, 3=O2tri, 4=O3pls(LFO), 5=O3tri(LFO), 6=Noise, 10=Filt, 11=Trap, 12=EnvS, 13=Ring */
+/* Cols: 0=Out1, 7=Filt signal, 8=Osc1F, 9=Osc2F, 10=Osc3F, 13=FiltF */
 
 void preset_on_the_run(MatrixState *m)
 {
     matrix_clear(m);
-    p(m, 0, 9, PIN_WHITE);   /* osc1 → out */
-    p(m, 1, 9, PIN_RED);     /* osc2 → out */
-    p(m, 2, 3, PIN_WHITE);   /* osc3 → filter */
-    p(m, 5, 9, PIN_GREEN);   /* noise → out */
-    p(m, 9, 9, PIN_WHITE);   /* ring → out */
+    p(m, 0, 0, PIN_WHITE);   /* O1 → Out1 */
+    p(m, 2, 0, PIN_RED);     /* O2 → Out1 */
+    p(m, 4, 8, PIN_GREEN);   /* LFO → Osc1 freq */
+    p(m, 6, 0, PIN_GREEN);   /* Noise → Out1 */
 }
 
 void preset_any_colour_lead(MatrixState *m)
 {
     matrix_clear(m);
-    p(m, 0, 9, PIN_WHITE);
-    p(m, 1, 9, PIN_WHITE);
-    p(m, 2, 9, PIN_RED);
-    p(m, 8, 9, PIN_GREEN);   /* env → out */
-    p(m, 5, 3, PIN_GREEN);
+    p(m, 0, 0, PIN_WHITE);
+    p(m, 2, 0, PIN_WHITE);
+    p(m, 4, 9, PIN_RED);     /* LFO → Osc2 freq */
+    p(m, 11, 0, PIN_GREEN);  /* Trap → Out1 */
 }
 
 void preset_irregular_clicks(MatrixState *m)
 {
     matrix_clear(m);
-    p(m, 5, 9, PIN_WHITE);   /* noise → out */
-    p(m, 0, 3, PIN_RED);
-    p(m, 1, 9, PIN_GREEN);
-    p(m, 9, 9, PIN_WHITE);
+    p(m, 6, 0, PIN_WHITE);   /* Noise → Out */
+    p(m, 4, 8, PIN_RED);
+    p(m, 0, 7, PIN_GREEN);   /* O1 → Filter */
+    p(m, 10, 0, PIN_WHITE);  /* Filter → Out */
 }
 
 void preset_noise_sweep(MatrixState *m)
 {
     matrix_clear(m);
-    p(m, 5, 9, PIN_WHITE);
-    p(m, 5, 3, PIN_GREEN);
-    p(m, 0, 9, PIN_RED);
-    p(m, 8, 9, PIN_WHITE);
+    p(m, 6, 7, PIN_WHITE);   /* Noise → Filter */
+    p(m, 4, 13, PIN_GREEN);  /* LFO → Filter freq */
+    p(m, 10, 0, PIN_WHITE);  /* Filter → Out */
 }
 
 void preset_spring_drone(MatrixState *m)
 {
     matrix_clear(m);
-    p(m, 0, 9, PIN_WHITE);
-    p(m, 2, 9, PIN_GREEN);
-    p(m, 5, 9, PIN_WHITE);
-    p(m, 9, 9, PIN_RED);
-    p(m, 8, 3, PIN_GREEN);
+    p(m, 0, 0, PIN_WHITE);
+    p(m, 5, 0, PIN_GREEN);   /* LFO tri → Out */
+    p(m, 6, 0, PIN_WHITE);
+    p(m, 13, 0, PIN_RED);    /* Ring → Out */
 }
 
 void preset_metallic_perc(MatrixState *m)
 {
     matrix_clear(m);
-    p(m, 1, 9, PIN_WHITE);
-    p(m, 5, 9, PIN_WHITE);
-    p(m, 9, 9, PIN_RED);
-    p(m, 0, 3, PIN_GREEN);
+    p(m, 2, 0, PIN_WHITE);
+    p(m, 6, 0, PIN_WHITE);
+    p(m, 13, 0, PIN_RED);
+    p(m, 4, 13, PIN_GREEN);  /* LFO → Filter freq */
 }
 
 void preset_empty(MatrixState *m) { matrix_clear(m); }

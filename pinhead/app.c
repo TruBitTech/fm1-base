@@ -58,10 +58,21 @@ void app_init(void)
 }
 
 /* ------------------------------------------------------------------ UI --- */
+/* Authentic Synthi / VCS3 matrix labels */
 static const char *COL_HEAD[] = {"A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P"};
 static const char *ROW_HEAD[] = {"1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16"};
-static const char *COL_LABEL[] = {"Osc1","Osc2","Osc3","Filt","Env","Nse","RMod","Out","Spr","Tape","JoyX","JoyY","Lush","PP","TIn","TOut"};
-static const char *ROW_LABEL[] = {"Osc1","Osc2","Osc3","Filt","Env","Nse","RMod","Out","Spr","Tape","JoyX","JoyY","Lush","PP","TIn","TOut"};
+
+/* Columns A-P = inputs */
+static const char *COL_LABEL[] = {
+    "Out1", "Meter", "Out2", "Env", "RingA", "RingB", "Reverb", "Filt", 
+    "Osc1F", "Osc2F", "Osc3F", "Decay", "RevMx", "FiltF", "Lvl1", "Lvl2"
+};
+
+/* Rows 1-16 = sources / treatments */
+static const char *ROW_LABEL[] = {
+    "O1sin", "O1saw", "O2pls", "O2tri", "O3pls", "O3tri", "Noise", "In1", 
+    "In2", "Filt", "Trap", "EnvS", "Ring", "Rev", "StkX", "StkY"
+};
 
 static void draw_matrix(void)
 {
@@ -80,7 +91,7 @@ static void draw_matrix(void)
         if (header_style == 0)
             cv_text(px, 2, &FONT_XS, COL_HEAD[c], C_GRAY);
         else
-            cv_text(px - 6, 2, &FONT_XS, COL_LABEL[c], C_DIM);
+            cv_text(px - 8, 2, &FONT_XS, COL_LABEL[c], C_DIM);
     }
     for (int r = 0; r < size; r++) {
         int py = oy + r * cell + cell / 2 - 4;
@@ -114,7 +125,6 @@ static void draw_matrix(void)
             else if (p == PIN_RED) col = C_HI;
             else if (p == PIN_GREEN) col = C_GRAY;
             cv_rect(px - 2, py - 2, 4, 4, col);
-            /* outline circle so the pin color stays visible */
             if (c == matrix.cursor_col && r == matrix.cursor_row) {
                 cv_rect(px - 6, py - 6, 12, 1, C_HI);
                 cv_rect(px - 6, py + 5, 12, 1, C_HI);
@@ -202,7 +212,6 @@ static void input(void)
             matrix_move_cursor(&matrix, 0, e);
         if ((e = plat_enc(EN_K2)))
             matrix_move_cursor(&matrix, e, 0);
-        /* K3 or EDIT button cycles the pin */
         if ((e = plat_enc(EN_K3)))
             matrix_cycle_pin(&matrix);
         if ((e = plat_enc(EN_PRESET))) {
@@ -247,7 +256,6 @@ static void input(void)
         preset_idx = (preset_idx + 1) % PRESET_COUNT;
         preset_load(&matrix, preset_idx);
     }
-    /* EDIT button also cycles the pin (backup for K3) */
     if ((btn & (1u << B_EDIT)) && !(last_btn & (1u << B_EDIT)) && mode == MODE_MATRIX)
         matrix_cycle_pin(&matrix);
     if ((btn & (1u << B_OCTUP)) && !(last_btn & (1u << B_OCTUP)))

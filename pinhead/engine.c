@@ -84,7 +84,7 @@ void engine_init(Engine *e, MatrixState *m, JoystickState *j)
 
     e->osc1.freq = 110.0f; e->osc1.pw = 0.5f; e->osc1.level = 0.5f;
     e->osc2.freq = 220.0f; e->osc2.pw = 0.5f; e->osc2.level = 0.35f;
-    e->osc3.freq = 55.0f;  e->osc3.pw = 0.5f; e->osc3.level = 0.25f;
+    e->osc3.freq = 1.5f;   e->osc3.pw = 0.5f; e->osc3.level = 0.4f; /* LFO range */
 
     e->filter.cutoff = 1800.0f;
     e->filter.res = 0.35f;
@@ -116,7 +116,7 @@ void engine_set_note(Engine *e, float freq)
 {
     e->osc1.freq = freq;
     e->osc2.freq = freq * 1.5f;
-    e->osc3.freq = freq * 0.5f;
+    /* osc3 stays as LFO unless matrix routes a pitch control */
 }
 
 void engine_load_preset(Engine *e, int index)
@@ -130,15 +130,23 @@ static void evaluate_matrix(Engine *e, float *dest)
     if (!m) return;
 
     float sources[16] = {0};
-    sources[0] = osc_tick(&e->osc1, PH_SAMPLE_RATE);
-    sources[1] = osc_tick(&e->osc2, PH_SAMPLE_RATE);
-    sources[2] = osc_tick(&e->osc3, PH_SAMPLE_RATE);
-    sources[5] = frand(&e->noise_seed) * 0.2f;
-    sources[8] = env_tick(&e->env, PH_SAMPLE_RATE);
-
-    e->ring_a = sources[0] * 0.5f + sources[1] * 0.5f;
-    e->ring_b = sources[5];
-    sources[9] = e->ring_a * e->ring_b;
+    /* Authentic row mapping */
+    sources[0] = osc_tick(&e->osc1, PH_SAMPLE_RATE);          /* 1 Osc1 sine */
+    sources[1] = osc_tick(&e->osc1, PH_SAMPLE_RATE) * 0.8f;   /* 2 Osc1 saw (approx) */
+    sources[2] = osc_tick(&e->osc2, PH_SAMPLE_RATE);          /* 3 Osc2 pulse */
+    sources[3] = osc_tick(&e->osc2, PH_SAMPLE_RATE) * 0.7f;   /* 4 Osc2 tri (approx) */
+    sources[4] = osc_tick(&e->osc3, PH_SAMPLE_RATE);          /* 5 Osc3 pulse (LFO) */
+    sources[5] = osc_tick(&e->osc3, PH_SAMPLE_RATE) * 0.6f;   /* 6 Osc3 tri (LFO) */
+    sources[6] = frand(&e->noise_seed) * 0.2f;                /* 7 Noise */
+    sources[7] = 0.0f;                                        /* 8 Input Ch1 */
+    sources[8] = 0.0f;                                        /* 9 Input Ch2 */
+    sources[9] = 0.0f;                                        /* 10 Filter (filled after) */
+    sources[10] = env_tick(&e->env, PH_SAMPLE_RATE);          /* 11 Trapezoid */
+    sources[11] = sources[10] * 0.8f;                         /* 12 Env signal */
+    sources[12] = sources[0] * sources[2];                    /* 13 Ring mod */
+    sources[13] = 0.0f;                                       /* 14 Reverb (post) */
+    sources[14] = e->joystick ? joystick_mod_x(e->joystick) : 0.0f; /* 15 Stick X */
+    sources[15] = e->joystick ? joystick_mod_y(e->joystick) : 0.0f; /* 16 Stick Y */
 
     for (int i = 0; i < 16; i++) dest[i] = 0.0f;
 
@@ -151,14 +159,23 @@ static void evaluate_matrix(Engine *e, float *dest)
         }
     }
 
-    /* filter column 3 */
-    float fin = dest[3];
+    /* Column H (7) = Filter signal in, Column N (13) = Filter freq control */
+    float fin = dest[7];
+    float fmod = dest[13];
+    if (fmod != 0.0f)
+        e->filter.cutoff = 200.0f + fmod * 2000.0f;
     filter_tick(&e->filter, fin, PH_SAMPLE_RATE);
-    dest[3] = e->filter.lp;
+    dest[9] = e->filter.lp;   /* row 10 = Filter output */
+    sources[9] = dest[9];
 
-    /* if nothing routed to output column 9, mix osc1+osc2 so keys still sound */
-    if (dest[9] == 0.0f && dest[3] == 0.0f)
-        dest[9] = sources[0] * 0.4f + sources[1] * 0.3f;
+    /* LFO modulation: if Osc3 is routed to Osc freq columns (I/J/K = 8/9/10) */
+    if (dest[8] != 0.0f) e->osc1.freq += dest[8] * 50.0f;
+    if (dest[9] != 0.0f && dest[7] == 0.0f) e->osc2.freq += dest[9] * 50.0f;
+    if (dest[10] != 0.0f) e->osc3.freq += dest[10] * 2.0f;
+
+    /* Fallback if nothing routed to output columns A or C (0 or 2) */
+    if (dest[0] == 0.0f && dest[2] == 0.0f)
+        dest[0] = sources[0] * 0.4f + sources[2] * 0.3f;
 }
 
 void engine_process(Engine *e, float *out_l, float *out_r, int n)
@@ -167,7 +184,7 @@ void engine_process(Engine *e, float *out_l, float *out_r, int n)
         float dest[16];
         evaluate_matrix(e, dest);
 
-        float dry = dest[9];
+        float dry = dest[0]; /* Output Ch 1 */
         float wet = spring_tick(&e->spring, dry);
         float tape = tape_tick(&e->tape, wet, PH_SAMPLE_RATE);
 
