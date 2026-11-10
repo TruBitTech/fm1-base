@@ -8,6 +8,8 @@
 #define MATRIX_ROWS     16
 #define MATRIX_COLS     16
 #define CORE_SIZE       10
+#define VIEW_ROWS       10
+#define VIEW_COLS       10
 
 typedef enum {
     PIN_NONE  = 0,
@@ -31,6 +33,8 @@ typedef struct {
     bool    full_page;
     uint8_t cursor_row;
     uint8_t cursor_col;
+    uint8_t scroll_row;
+    uint8_t scroll_col;
 } MatrixState;
 
 void matrix_init(MatrixState *m);

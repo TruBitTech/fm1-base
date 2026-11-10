@@ -7,6 +7,8 @@ void matrix_init(MatrixState *m)
     m->full_page = false;
     m->cursor_row = 0;
     m->cursor_col = 0;
+    m->scroll_row = 0;
+    m->scroll_col = 0;
 }
 
 void matrix_clear(MatrixState *m)
@@ -19,25 +21,42 @@ void matrix_clear(MatrixState *m)
 void matrix_set_view(MatrixState *m, bool full_page)
 {
     m->full_page = full_page;
+    if (!full_page) {
+        m->scroll_row = 0;
+        m->scroll_col = 0;
+    }
 }
 
 void matrix_move_cursor(MatrixState *m, int d_row, int d_col)
 {
-    int size = m->full_page ? MATRIX_ROWS : CORE_SIZE;
     if (m->full_page) {
-        /* hard stop */
+        /* hard stop at edges, scroll the viewport to keep cursor visible */
         int nr = (int)m->cursor_row + d_row;
         int nc = (int)m->cursor_col + d_col;
         if (nr < 0) nr = 0;
-        if (nr >= size) nr = size - 1;
+        if (nr >= MATRIX_ROWS) nr = MATRIX_ROWS - 1;
         if (nc < 0) nc = 0;
-        if (nc >= size) nc = size - 1;
+        if (nc >= MATRIX_COLS) nc = MATRIX_COLS - 1;
         m->cursor_row = (uint8_t)nr;
         m->cursor_col = (uint8_t)nc;
+
+        if (m->cursor_row < m->scroll_row)
+            m->scroll_row = m->cursor_row;
+        if (m->cursor_row >= m->scroll_row + VIEW_ROWS)
+            m->scroll_row = m->cursor_row - VIEW_ROWS + 1;
+        if (m->cursor_col < m->scroll_col)
+            m->scroll_col = m->cursor_col;
+        if (m->cursor_col >= m->scroll_col + VIEW_COLS)
+            m->scroll_col = m->cursor_col - VIEW_COLS + 1;
+
+        if (m->scroll_row > MATRIX_ROWS - VIEW_ROWS)
+            m->scroll_row = MATRIX_ROWS - VIEW_ROWS;
+        if (m->scroll_col > MATRIX_COLS - VIEW_COLS)
+            m->scroll_col = MATRIX_COLS - VIEW_COLS;
     } else {
-        /* wrap */
-        m->cursor_row = (uint8_t)((m->cursor_row + d_row + size) % size);
-        m->cursor_col = (uint8_t)((m->cursor_col + d_col + size) % size);
+        /* wrap on core view */
+        m->cursor_row = (uint8_t)((m->cursor_row + d_row + CORE_SIZE) % CORE_SIZE);
+        m->cursor_col = (uint8_t)((m->cursor_col + d_col + CORE_SIZE) % CORE_SIZE);
     }
 }
 

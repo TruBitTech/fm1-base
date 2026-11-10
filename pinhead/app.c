@@ -71,7 +71,6 @@ static const char *ROW_LABEL[] = {
     "In2", "Flt", "Trp", "EnS", "Rng", "Rev", "StX", "StY"
 };
 
-/* draw label vertically: first char at the column, subsequent chars above it (spelled away) */
 static void draw_vert(int x, int y, const char *s)
 {
     int i = 0;
@@ -84,34 +83,41 @@ static void draw_vert(int x, int y, const char *s)
 
 static void draw_matrix(void)
 {
-    int size = matrix.full_page ? 16 : 10;
-    int top = matrix.full_page ? 28 : 20;
-    int bottom = 14;
-    int left = 12;
+    int size = matrix.full_page ? VIEW_ROWS : CORE_SIZE;
+    int top = 18;
+    int bottom = 16;
+    int left = 14;
     int avail_h = 240 - top - bottom;
-    int avail_w = 240 - left - 2;
+    int avail_w = 240 - left - 4;
     int cell = avail_h / size;
     if (cell > avail_w / size) cell = avail_w / size;
-    if (cell < 5) cell = 5;
+    if (cell < 6) cell = 6;
     int grid = cell * size;
     int ox = left + (avail_w - grid) / 2;
     int oy = top;
 
+    int sr = matrix.full_page ? matrix.scroll_row : 0;
+    int sc = matrix.full_page ? matrix.scroll_col : 0;
+
     cv_begin(240, 240, C_BLACK);
 
+    /* sticky column headers */
     for (int c = 0; c < size; c++) {
+        int abs_c = sc + c;
         int px = ox + c * cell + cell / 2 - 2;
         if (header_style == 0)
-            cv_text(px, 1, &FONT_XS, COL_HEAD[c], C_GRAY);
+            cv_text(px, 1, &FONT_XS, COL_HEAD[abs_c], C_GRAY);
         else
-            draw_vert(px, oy - 8, COL_LABEL[c]);
+            draw_vert(px, oy - 6, COL_LABEL[abs_c]);
     }
+    /* sticky row headers */
     for (int r = 0; r < size; r++) {
+        int abs_r = sr + r;
         int py = oy + r * cell + cell / 2 - 3;
         if (header_style == 0)
-            cv_text(1, py, &FONT_XS, ROW_HEAD[r], C_GRAY);
+            cv_text(1, py, &FONT_XS, ROW_HEAD[abs_r], C_GRAY);
         else
-            cv_text(1, py - 1, &FONT_XS, ROW_LABEL[r], C_DIM);
+            cv_text(1, py - 1, &FONT_XS, ROW_LABEL[abs_r], C_DIM);
     }
 
     if (grid_style == 1) {
@@ -130,26 +136,28 @@ static void draw_matrix(void)
 
     for (int r = 0; r < size; r++) {
         for (int c = 0; c < size; c++) {
+            int abs_r = sr + r;
+            int abs_c = sc + c;
             int px = ox + c * cell + cell / 2;
             int py = oy + r * cell + cell / 2;
-            PinType p = matrix.pins[r][c];
+            PinType p = matrix.pins[abs_r][abs_c];
             uint16_t col = (grid_style == 0) ? C_DIM : C_BLACK;
             if (p == PIN_WHITE) col = C_WHITE;
             else if (p == PIN_RED) col = C_HI;
             else if (p == PIN_GREEN) col = C_GRAY;
-            cv_rect(px - 1, py - 1, 3, 3, col);
-            if (c == matrix.cursor_col && r == matrix.cursor_row) {
-                cv_rect(px - 4, py - 4, 8, 1, C_HI);
-                cv_rect(px - 4, py + 3, 8, 1, C_HI);
-                cv_rect(px - 4, py - 3, 1, 6, C_HI);
-                cv_rect(px + 3, py - 3, 1, 6, C_HI);
+            cv_rect(px - 2, py - 2, 4, 4, col);
+            if (abs_c == matrix.cursor_col && abs_r == matrix.cursor_row) {
+                cv_rect(px - 5, py - 5, 10, 1, C_HI);
+                cv_rect(px - 5, py + 4, 10, 1, C_HI);
+                cv_rect(px - 5, py - 4, 1, 8, C_HI);
+                cv_rect(px + 4, py - 4, 1, 8, C_HI);
             }
         }
     }
 
-    /* preset name at the bottom */
-    cv_text(2, 230, &FONT_XS, matrix.full_page ? "FULL" : "CORE", C_GRAY);
-    cv_text(36, 230, &FONT_XS, factory_presets[preset_idx].name, C_HI);
+    /* status bar with preset name */
+    cv_text(2, 226, &FONT_XS, matrix.full_page ? "FULL" : "CORE", C_GRAY);
+    cv_text(40, 226, &FONT_XS, factory_presets[preset_idx].name, C_HI);
     cv_blit(0, 0);
 }
 
